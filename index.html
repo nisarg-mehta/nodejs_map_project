@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Real-time GPS Tracker with Direction</title>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.css" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.js"></script>
+<script src="http://localhost:4001/socket.io/socket.io.js"></script>
+
+<div style="position: absolute; top: 20px; right: 20px; z-index: 1;">
+    <button id="playButton">Play</button>
+    <button id="pauseButton">Pause</button>
+</div>
+
+<script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoibmlzYXJnMTQwNiIsImEiOiJjbHNhNDdyZm0wZHpiMmlyeXZ4ZjRzZmd1In0.3VHUqUR6OY1FVMz5Yi5U-w'; // Replace with your Mapbox access token
+
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: [18.985641666666666, 74.57622666666667],
+        zoom: 10
+    });
+
+    let marker; 
+    let route = [];
+    marker = new mapboxgl.Marker({ rotation: 0 }) // Initial rotation, will be updated
+        .setLngLat([18.985641666666666, 74.57622666666667])
+        .addTo(map);
+
+    map.on('load', function() {
+        map.addSource('route', {
+            'type': 'geojson',
+            'data': {
+                'type': 'Feature',
+                'properties': {},
+                'geometry': {
+                    'type': 'LineString',
+                    'coordinates': route
+                }
+            }
+        });
+
+        map.addLayer({
+            'id': 'route',
+            'type': 'line',
+            'source': 'route',
+            'layout': {
+                'line-join': 'round',
+                'line-cap': 'round'
+            },
+            'paint': {
+                'line-color': '#1db7dd',
+                'line-width': 5,
+                'line-opacity': 0.75
+            }
+        });
+
+        document.getElementById('playButton').addEventListener('click', function() {
+            socket.emit('play'); // Tell the server to resume emitting GPS packets
+        });
+
+        document.getElementById('pauseButton').addEventListener('click', function() {
+            socket.emit('pause'); // Tell the server to pause emitting GPS packets
+        });
+
+        // Handle initial location and route sent by the server
+        var socket = io();
+        socket.on('initial_location', function(data) {
+            const { lastKnownLocation, route } = data;
+            // Initialize the route with the received route
+            route.forEach(function(pos) {
+                route.push(pos); // This updates the route on the client side
+            });
+
+            // Update the route line on the map
+            map.getSource('route').setData({
+                'type': 'Feature',
+                'properties': {},
+                'geometry': {
+                    'type': 'LineString',
+                    'coordinates': route
+                }
+            });
+
+            // Set the marker to the last known location
+            if (lastKnownLocation) {
+                const newPos = [lastKnownLocation.latitude, lastKnownLocation.longitude];
+                marker.setLngLat(newPos).addTo(map); 
+                map.flyTo({ center: newPos, essential: true });
+            }
+        });
+
+        socket.on('gps_packet', function(packet) {
+            const newPos = [packet.latitude, packet.longitude];
+            route.push(newPos); // Add new position to route
+            console.log('Updated Route:', route);
+
+            // Update route line on map
+            map.getSource('route').setData({
+                'type': 'Feature',
+                'properties': {},
+                'geometry': {
+                    'type': 'LineString',
+                    'coordinates': route
+                }
+            });
+
+            localStorage.setItem('route', JSON.stringify(route));
+            localStorage.setItem('position', JSON.stringify(newPos));
+
+            // Update marker position and rotation based on head direction
+            marker.setLngLat(newPos)
+                  .setRotation(packet.direction) // Assuming 'direction' is in degrees from north
+                  .addTo(map);
+
+            map.flyTo({ center: newPos, essential: true }); // Smoothly move the map to new position
+        });
+    });
+</script>
+</body>
+</html>
