@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "document": "^0.4.7",
+    "express": "^4.18.2",
+    "redis": "^4.6.13",
+    "socket.io": "^4.7.4"
+  }
+}
